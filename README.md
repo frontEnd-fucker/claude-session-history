@@ -1,6 +1,8 @@
 # Session History
 
 A web-based viewer for Claude Code session history. Browse and search through your Claude Code sessions with a modern UI.
+![Uploading 截屏2026-03-04 00.35.02.png…]()
+
 
 ## Features
 
