@@ -10,7 +10,7 @@ let currentSearchIndex = -1;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    loadProjects();
+    loadCurrentProject();
 
     // Filter tool calls toggle
     document.getElementById('filterToolCalls').addEventListener('change', (e) => {
@@ -43,6 +43,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+async function loadCurrentProject() {
+    try {
+        // Get current project first
+        const response = await fetch(`${API_BASE}/api/current-project`);
+        const currentProject = await response.json();
+
+        // Then load all projects
+        const projectsResponse = await fetch(`${API_BASE}/api/projects`);
+        const projects = await projectsResponse.json();
+
+        // If current project found, set it as current
+        if (currentProject && currentProject.id) {
+            currentProjectId = currentProject.id;
+        }
+
+        renderProjectList(projects);
+    } catch (error) {
+        console.error('Failed to load projects:', error);
+        // Fallback to just loading projects
+        loadProjects();
+    }
+}
+
 async function loadProjects() {
     try {
         const response = await fetch(`${API_BASE}/api/projects`);
@@ -66,7 +89,7 @@ function renderProjectList(projects) {
     container.innerHTML = projects.map(project => `
         <div class="project-item ${project.id === currentProjectId ? 'active' : ''}"
              data-id="${project.id}">
-            <div class="project-item-name">${escapeHtml(project.name)}</div>
+            <div class="project-item-name">${escapeHtml(project.title || project.name)}</div>
             <div class="project-item-meta">
                 <span>${project.session_count} 个会话</span>
             </div>
@@ -80,6 +103,12 @@ function renderProjectList(projects) {
             loadProjectMessages(projectId);
         });
     });
+
+    // Auto-select project: current project if available, otherwise first project
+    if (projects.length > 0) {
+        const projectToLoad = currentProjectId || projects[0].id;
+        loadProjectMessages(projectToLoad);
+    }
 }
 
 async function loadProjectMessages(projectId) {

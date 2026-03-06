@@ -35,12 +35,46 @@ def get_projects():
                 # Decode project path from directory name
                 project_name = project_dir.name.replace(f"-{HOME_PATH.replace('/', '-')}", HOME_PATH)
                 project_name = project_name.replace("-", "/")
+
+                # Create short title (remove first 2 parts of path)
+                parts = project_name.strip("/").split("/")
+                if len(parts) > 2:
+                    title = "/".join(parts[2:])
+                else:
+                    title = project_name
+
                 projects.append({
                     "id": project_dir.name,
                     "name": project_name,
+                    "title": title,
                     "session_count": len(session_files)
                 })
+
+    # Sort by session count descending
+    projects.sort(key=lambda x: x["session_count"], reverse=True)
     return projects
+
+
+def get_current_project():
+    """Get the current project based on current working directory."""
+    current_cwd = os.getcwd()
+
+    # Find matching project
+    for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
+        if project_dir.is_dir():
+            project_name = project_dir.name.replace(f"-{HOME_PATH.replace('/', '-')}", HOME_PATH)
+            project_name = project_name.replace("-", "/")
+
+            # Check if current cwd matches or is inside the project
+            if current_cwd == project_name or current_cwd.startswith(project_name + "/"):
+                session_files = list(project_dir.glob("*.jsonl"))
+                return {
+                    "id": project_dir.name,
+                    "name": project_name,
+                    "session_count": len(session_files)
+                }
+
+    return None
 
 
 def clean_string(s):
@@ -308,6 +342,9 @@ class SessionHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/projects":
             self.send_json(get_projects())
+
+        elif path == "/api/current-project":
+            self.send_json(get_current_project())
 
         elif path == "/api/sessions":
             project_id = query.get("project", [None])[0]
