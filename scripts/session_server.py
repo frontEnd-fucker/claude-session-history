@@ -68,8 +68,8 @@ def parse_session_file(session_path):
             try:
                 data = json.loads(line)
 
-                # Skip non-message types (like file-history-snapshot)
-                if data.get("type") not in ("user", "assistant", "result", "system", "system-prompt"):
+                # Skip non-message types (system messages have no content)
+                if data.get("type") not in ("user", "assistant", "result"):
                     continue
 
                 msg_type = data.get("type", "unknown")
