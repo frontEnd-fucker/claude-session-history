@@ -18,6 +18,9 @@ import socketserver
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 PORT = 8765
 
+# Get user's home directory for path decoding
+HOME_PATH = str(Path.home())
+
 
 def get_projects():
     """Get list of all projects with session files."""
@@ -30,7 +33,7 @@ def get_projects():
             session_files = list(project_dir.glob("*.jsonl"))
             if session_files:
                 # Decode project path from directory name
-                project_name = project_dir.name.replace("-Users-yw-", "/Users/yw/")
+                project_name = project_dir.name.replace(f"-{HOME_PATH.replace('/', '-')}", HOME_PATH)
                 project_name = project_name.replace("-", "/")
                 projects.append({
                     "id": project_dir.name,
@@ -175,7 +178,7 @@ def get_sessions(project_id=None, search_keyword=None, start_date=None, end_date
         cwd = first_msg.get("cwd", "")
 
         # Get project name
-        project_name = session_path.parent.name.replace("-Users-yw-", "/Users/yw/")
+        project_name = session_path.parent.name.replace(f"-{HOME_PATH.replace('/', '-')}", HOME_PATH)
         project_name = project_name.replace("-", "/")
 
         # Get first user message as title
@@ -248,6 +251,53 @@ def get_session_detail(session_id):
     return []
 
 
+def get_project_messages(project_id):
+    """Get all messages from all sessions in a project."""
+    project_dir = CLAUDE_PROJECTS_DIR / project_id
+
+    if not project_dir.exists():
+        return {
+            "project_id": project_id,
+            "project_name": "",
+            "session_count": 0,
+            "message_count": 0,
+            "messages": []
+        }
+
+    # Decode project name
+    project_name = project_id.replace(f"-{HOME_PATH.replace('/', '-')}", HOME_PATH)
+    project_name = project_name.replace("-", "/")
+
+    # Find all session files in the project
+    session_files = list(project_dir.glob("*.jsonl"))
+
+    all_messages = []
+
+    for session_path in session_files:
+        if session_path.suffix != ".jsonl":
+            continue
+
+        session_id = session_path.stem
+        messages = parse_session_file(session_path)
+
+        # Add session_id to each message
+        for msg in messages:
+            msg["session_id"] = session_id
+
+        all_messages.extend(messages)
+
+    # Sort by timestamp descending (newest first)
+    all_messages.sort(key=lambda x: x["timestamp"], reverse=True)
+
+    return {
+        "project_id": project_id,
+        "project_name": project_name,
+        "session_count": len(session_files),
+        "message_count": len(all_messages),
+        "messages": all_messages
+    }
+
+
 class SessionHandler(SimpleHTTPRequestHandler):
     """HTTP handler for session viewer."""
 
@@ -268,9 +318,14 @@ class SessionHandler(SimpleHTTPRequestHandler):
             offset = int(query.get("offset", ["0"])[0])
             self.send_json(get_sessions(project_id, search, start_date, end_date, limit, offset))
 
-        elif path.startswith("/api/session/"):
-            session_id = path.split("/")[-1]
-            self.send_json(get_session_detail(session_id))
+        elif "/api/project/" in path and "/messages" in path:
+            # /api/project/{project_id}/messages
+            match = re.match(r'/api/project/([^/]+)/messages', path)
+            if match:
+                project_id = match.group(1)
+                self.send_json(get_project_messages(project_id))
+            else:
+                self.send_error(400)
 
         elif path == "/" or path == "/index.html":
             self.send_file("index.html")
