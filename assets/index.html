@@ -11,64 +11,49 @@
 </head>
 <body>
     <div class="app">
-        <!-- Sidebar -->
+        <!-- Sidebar - Project List -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h1>会话历史</h1>
+                <h1>项目列表</h1>
             </div>
 
-            <!-- Filters -->
-            <div class="filters">
-                <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="搜索会话内容..." autocomplete="off">
-                </div>
-                <div class="search-results-panel" id="searchResultsPanel">
-                    <div class="search-results-header">
-                        <span class="search-results-count" id="searchResultsCount"></span>
-                        <button class="search-close-btn" id="searchCloseBtn">×</button>
-                    </div>
-                    <div class="search-results-list" id="searchResultsList"></div>
-                </div>
-                <div class="filter-row">
-                    <input type="date" id="startDate" placeholder="开始日期">
-                    <span>-</span>
-                    <input type="date" id="endDate" placeholder="结束日期">
-                </div>
-                <button id="applyFilters" class="btn-primary">应用筛选</button>
-            </div>
-
-            <!-- Session List -->
-            <div class="session-list" id="sessionList">
+            <!-- Project List -->
+            <div class="project-list" id="projectList">
                 <div class="loading">加载中...</div>
-            </div>
-
-            <!-- Load More -->
-            <div class="load-more" id="loadMore" style="display: none;">
-                <button id="loadMoreBtn" class="btn-secondary">加载更多</button>
-                <span class="load-more-info" id="loadMoreInfo"></span>
             </div>
         </aside>
 
-        <!-- Main Content -->
+        <!-- Main Content - Messages -->
         <main class="main-content">
             <div class="welcome" id="welcome">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
                 <h2>欢迎使用会话历史查看器</h2>
-                <p>从左侧选择一个会话开始查看</p>
+                <p>从左侧选择一个项目查看所有消息</p>
             </div>
 
-            <div class="session-detail" id="sessionDetail" style="display: none;">
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer" style="display: none;">
                 <div class="detail-header">
-                    <h2 id="sessionTitle">会话详情</h2>
+                    <h2 id="projectTitle">项目消息</h2>
                     <div class="detail-meta">
-                        <span id="sessionProject"></span>
-                        <span id="sessionTime"></span>
+                        <span id="sessionCount"></span>
+                        <span id="messageCount"></span>
                     </div>
                 </div>
 
                 <div class="detail-toolbar">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="搜索消息内容..." autocomplete="off">
+                        <div class="search-results-panel" id="searchResultsPanel">
+                            <div class="search-results-header">
+                                <span class="search-results-count" id="searchResultsCount"></span>
+                                <button class="search-close-btn" id="searchCloseBtn">×</button>
+                            </div>
+                            <div class="search-results-list" id="searchResultsList"></div>
+                        </div>
+                    </div>
                     <label class="filter-tool-call">
                         <input type="checkbox" id="filterToolCalls" checked>
                         <span>隐藏工具调用</span>

@@ -1,176 +1,129 @@
 const API_BASE = '';
 
-let currentSessionId = null;
-let sessionsData = null;
-let currentOffset = 0;
-const PAGE_SIZE = 50;
+// State
+let currentProjectId = null;
+let currentMessages = null;
+let filterToolCalls = true;
+let currentSearchTerm = '';
+let searchResults = [];
+let currentSearchIndex = -1;
 
-async function loadSessions(reset = true) {
-    if (reset) {
-        currentOffset = 0;
-        sessionsData = null;
-    }
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadProjects();
 
-    const searchInput = document.getElementById('searchInput').value;
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-
-    let url = `${API_BASE}/api/sessions?limit=${PAGE_SIZE}&offset=${currentOffset}&`;
-    if (searchInput) url += `search=${encodeURIComponent(searchInput)}&`;
-    if (startDate) url += `start=${encodeURIComponent(startDate)}&`;
-    if (endDate) url += `end=${encodeURIComponent(endDate)}&`;
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if (reset) {
-            sessionsData = data.sessions;
-        } else {
-            sessionsData = sessionsData.concat(data.sessions);
+    // Filter tool calls toggle
+    document.getElementById('filterToolCalls').addEventListener('change', (e) => {
+        filterToolCalls = e.target.checked;
+        if (currentMessages) {
+            renderMessages(currentMessages);
         }
+    });
 
-        const total = data.total;
-        const hasMore = data.has_more;
+    // Search input handlers
+    document.getElementById('searchInput').addEventListener('input', () => {
+        const searchTerm = document.getElementById('searchInput').value;
+        performSearch(searchTerm);
+    });
 
-        renderSessionList(sessionsData);
-        updateLoadMoreButton(total, hasMore);
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const searchTerm = document.getElementById('searchInput').value;
+            performSearch(searchTerm);
+        }
+    });
+
+    // Close search panel
+    document.getElementById('searchCloseBtn').addEventListener('click', () => {
+        document.getElementById('searchResultsPanel').style.display = 'none';
+        document.getElementById('searchInput').value = '';
+        currentSearchTerm = '';
+        searchResults = [];
+        clearHighlights();
+    });
+});
+
+async function loadProjects() {
+    try {
+        const response = await fetch(`${API_BASE}/api/projects`);
+        const projects = await response.json();
+        renderProjectList(projects);
     } catch (error) {
-        console.error('Failed to load sessions:', error);
-        document.getElementById('sessionList').innerHTML =
+        console.error('Failed to load projects:', error);
+        document.getElementById('projectList').innerHTML =
             '<div class="no-results">加载失败，请确保服务器正在运行</div>';
     }
 }
 
-function renderSessionList(sessions) {
-    const container = document.getElementById('sessionList');
+function renderProjectList(projects) {
+    const container = document.getElementById('projectList');
 
-    if (!sessions || sessions.length === 0) {
-        container.innerHTML = '<div class="no-results">没有找到会话</div>';
+    if (!projects || projects.length === 0) {
+        container.innerHTML = '<div class="no-results">没有找到项目</div>';
         return;
     }
 
-    container.innerHTML = sessions.map(session => `
-        <div class="session-item ${session.id === currentSessionId ? 'active' : ''}"
-             data-id="${session.id}">
-            <div class="session-item-title">${escapeHtml(session.title)}</div>
-            <div class="session-item-meta">
-                <span>${escapeHtml(session.project)}</span>
-                <span>${session.timestamp}</span>
+    container.innerHTML = projects.map(project => `
+        <div class="project-item ${project.id === currentProjectId ? 'active' : ''}"
+             data-id="${project.id}">
+            <div class="project-item-name">${escapeHtml(project.name)}</div>
+            <div class="project-item-meta">
+                <span>${project.session_count} 个会话</span>
             </div>
         </div>
     `).join('');
 
     // Add click handlers
-    container.querySelectorAll('.session-item').forEach(item => {
+    container.querySelectorAll('.project-item').forEach(item => {
         item.addEventListener('click', () => {
-            const sessionId = item.dataset.id;
-            loadSessionDetail(sessionId);
+            const projectId = item.dataset.id;
+            loadProjectMessages(projectId);
         });
     });
 }
 
-function updateLoadMoreButton(total, hasMore) {
-    const loadMoreDiv = document.getElementById('loadMore');
-    const loadMoreInfo = document.getElementById('loadMoreInfo');
-
-    if (hasMore) {
-        loadMoreDiv.style.display = 'block';
-        loadMoreInfo.textContent = `已加载 ${sessionsData.length} / ${total} 条会话`;
-    } else {
-        if (sessionsData && sessionsData.length > 0) {
-            loadMoreDiv.style.display = 'block';
-            loadMoreInfo.textContent = `共 ${total} 条会话`;
-        } else {
-            loadMoreDiv.style.display = 'none';
-        }
-    }
-}
-
-async function loadSessionDetail(sessionId) {
-    currentSessionId = sessionId;
+async function loadProjectMessages(projectId) {
+    currentProjectId = projectId;
 
     // Update active state in list
-    document.querySelectorAll('.session-item').forEach(item => {
-        item.classList.toggle('active', item.dataset.id === sessionId);
+    document.querySelectorAll('.project-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.id === projectId);
     });
 
-    // Show loading
+    // Clear search state
+    document.getElementById('searchInput').value = '';
+    currentSearchTerm = '';
+    searchResults = [];
+    currentSearchIndex = -1;
+    document.getElementById('searchResultsPanel').style.display = 'none';
+
+    // Show messages container
     document.getElementById('welcome').style.display = 'none';
-    const detailPanel = document.getElementById('sessionDetail');
-    detailPanel.style.display = 'flex';
+    document.getElementById('messagesContainer').style.display = 'flex';
     document.getElementById('messages').innerHTML = '<div class="loading">加载中...</div>';
 
     try {
-        const response = await fetch(`${API_BASE}/api/session/${sessionId}`);
-        const messages = await response.json();
+        const response = await fetch(`${API_BASE}/api/project/${projectId}/messages`);
+        const data = await response.json();
 
-        // Find session info
-        const session = sessionsData.find(s => s.id === sessionId);
-        if (session) {
-            document.getElementById('sessionTitle').textContent = session.title;
-            document.getElementById('sessionProject').textContent = session.project;
-            document.getElementById('sessionTime').textContent = session.timestamp;
-        }
+        // Update header
+        document.getElementById('projectTitle').textContent = data.project_name;
+        document.getElementById('sessionCount').textContent = `${data.session_count} 个会话`;
+        document.getElementById('messageCount').textContent = `${data.message_count} 条消息`;
 
-        // 清除之前的搜索状态
-        document.getElementById('searchInput').value = '';
-        currentSearchTerm = '';
-        searchResults = [];
-        currentSearchIndex = -1;
-
-        renderMessages(messages);
+        currentMessages = data.messages;
+        renderMessages(currentMessages);
     } catch (error) {
-        console.error('Failed to load session detail:', error);
+        console.error('Failed to load project messages:', error);
         document.getElementById('messages').innerHTML =
             '<div class="no-results">加载失败</div>';
     }
 }
 
-// 搜索相关变量
-let currentSearchTerm = '';
-let filterToolCalls = true; // 默认过滤工具调用
-let searchResults = [];
-let currentSearchIndex = -1;
-
-function searchInMessages(messages, term) {
-    if (!term) return [];
-
-    const results = [];
-    const lowerTerm = term.toLowerCase();
-
-    messages.forEach((msg, index) => {
-        const content = msg.content || '';
-        if (content.toLowerCase().includes(lowerTerm)) {
-            // 找到匹配位置
-            const idx = content.toLowerCase().indexOf(lowerTerm);
-            const start = Math.max(0, idx - 30);
-            const end = Math.min(content.length, idx + term.length + 30);
-            let preview = content.substring(start, end);
-            if (start > 0) preview = '...' + preview;
-            if (end < content.length) preview = preview + '...';
-
-            results.push({
-                messageIndex: index,
-                preview: preview,
-                position: idx
-            });
-        }
-    });
-
-    return results;
-}
-
-function renderMessages(messages, searchTerm = '') {
+function renderMessages(messages) {
     const container = document.getElementById('messages');
 
-    // 保存原始消息用于搜索
-    window.currentMessages = messages;
-
-    // 搜索时不改变消息内容，只记录搜索结果
-    currentSearchTerm = searchTerm;
-
-    // 过滤空消息
+    // Filter empty messages
     let filteredMessages = messages.filter(msg => {
         const content = msg.content || '';
         if (msg.role === 'assistant' && !content.trim()) {
@@ -179,147 +132,27 @@ function renderMessages(messages, searchTerm = '') {
         return true;
     });
 
-    // 过滤工具调用消息
+    // Filter tool calls
     if (filterToolCalls) {
         filteredMessages = filteredMessages.filter(msg => {
             const content = msg.content || '';
-            // 过滤包含工具调用或工具结果的消息
             const isToolCall = content.includes('[Tool Call:') || content.includes('[Tool:');
             const isToolResult = content.includes('[Tool Result:') || content.includes('[Tool Result]');
             return !(isToolCall || isToolResult);
         });
     }
 
-    // 搜索时只记录结果并显示面板，不改变消息显示
-    if (searchTerm) {
-        searchResults = searchInMessages(filteredMessages, searchTerm);
-        showSearchResults();
-    } else {
-        searchResults = [];
-        document.getElementById('searchResultsPanel').style.display = 'none';
-        // 清除之前的高亮
-        clearHighlights();
-    }
-
-    // 如果消息容器已经有内容，说明已经渲染过，只返回不重新渲染
-    if (container.querySelector('.message, .tool-group')) {
-        return;
-    }
-
     if (filteredMessages.length === 0) {
-        container.innerHTML = '<div class="no-results">会话内容为空</div>';
+        container.innerHTML = '<div class="no-results">没有消息</div>';
         return;
     }
 
-    // 首次渲染消息列表
+    // Group tool calls with results
     const groupedMessages = groupToolCallsWithResults(filteredMessages);
     container.innerHTML = groupedMessages.map((item, idx) =>
         renderGroupedMessage(item)
     ).join('');
-    container.scrollTop = 0;
-}
-
-function clearHighlights() {
-    const container = document.getElementById('messages');
-    container.querySelectorAll('.search-highlight').forEach(el => {
-        el.replaceWith(el.textContent);
-    });
-}
-
-function showSearchResults() {
-    const panel = document.getElementById('searchResultsPanel');
-    const countEl = document.getElementById('searchResultsCount');
-    const listEl = document.getElementById('searchResultsList');
-
-    if (!currentSearchTerm || searchResults.length === 0) {
-        panel.style.display = 'none';
-        return;
-    }
-
-    // 更新计数
-    countEl.textContent = `找到 ${searchResults.length} 条匹配`;
-
-    // 生成结果列表
-    const items = searchResults.map((result, idx) => {
-        const escaped = currentSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(${escaped})`, 'gi');
-        const highlighted = result.preview.replace(regex, '<mark>$1</mark>');
-
-        return `
-            <div class="search-result-item" data-index="${idx}">
-                <span class="search-item-index">${idx + 1}</span>
-                <span class="search-item-preview">${highlighted}</span>
-            </div>
-        `;
-    }).join('');
-
-    listEl.innerHTML = items;
-    panel.style.display = 'block';
-
-    // 添加点击事件
-    listEl.querySelectorAll('.search-result-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const idx = parseInt(item.dataset.index);
-            goToMatch(idx);
-        });
-    });
-}
-
-function goToMatch(idx) {
-    currentSearchIndex = idx;
-    const container = document.getElementById('messages');
-
-    // 清除之前的消息高亮
-    container.querySelectorAll('.message-highlight').forEach(el => {
-        el.classList.remove('message-highlight');
-    });
-
-    // 清除之前的文本高亮
-    container.querySelectorAll('.search-highlight').forEach(el => {
-        const parent = el.parentNode;
-        parent.replaceChild(document.createTextNode(el.textContent), el);
-    });
-
-    const result = searchResults[idx];
-    if (!result) return;
-
-    // 找到对应的消息元素（通过索引）
-    const messageElements = container.querySelectorAll('.message, .tool-group');
-    const targetElement = messageElements[result.messageIndex];
-
-    if (targetElement) {
-        // 滚动到该消息
-        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        // 高亮整个消息
-        targetElement.classList.add('message-highlight');
-
-        // 在消息内容中高亮匹配的文本
-        const contentEl = targetElement.querySelector('.message-content');
-        if (contentEl) {
-            const escaped = currentSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`(${escaped})`, 'gi');
-            contentEl.innerHTML = contentEl.innerHTML.replace(regex, '<mark class="search-highlight current">$1</mark>');
-
-            // 移除 current 类
-            setTimeout(() => {
-                contentEl.querySelectorAll('.search-highlight').forEach(el => {
-                    el.classList.remove('current');
-                });
-            }, 1500);
-        }
-
-        // 移除消息高亮
-        setTimeout(() => {
-            targetElement.classList.remove('message-highlight');
-        }, 2000);
-    }
-
-    // 高亮当前选中的搜索结果
-    const listEl = document.getElementById('searchResultsList');
-    listEl.querySelectorAll('.search-result-item').forEach((item, i) => {
-        item.classList.toggle('active', i === idx);
-    });
+    container.scrollTop = container.scrollHeight;
 }
 
 function groupToolCallsWithResults(messages) {
@@ -330,23 +163,18 @@ function groupToolCallsWithResults(messages) {
         const msg = messages[i];
         const content = msg.content || '';
 
-        // Check if this is a tool call message
         if (content.includes('[Tool Call:') || content.includes('[Tool:')) {
-            // Look for the next message that is a tool result
             let toolCallGroup = {
                 type: 'tool-group',
                 toolCall: msg,
                 toolResult: null
             };
 
-            // Check next messages for tool results
             let j = i + 1;
             while (j < messages.length) {
                 const nextMsg = messages[j];
                 const nextContent = nextMsg.content || '';
 
-                // If it's a tool result for this tool call
-                // Check for "[Tool Result:" (with colon) which can be in user messages
                 const isToolResult = nextContent.includes('[Tool Result:') ||
                     nextContent.includes('[Tool Result]') ||
                     nextMsg.type === 'tool_result' ||
@@ -363,7 +191,6 @@ function groupToolCallsWithResults(messages) {
             result.push(toolCallGroup);
             i = j;
         } else {
-            // Regular message
             result.push({ type: 'single', message: msg });
             i++;
         }
@@ -374,7 +201,6 @@ function groupToolCallsWithResults(messages) {
 
 function renderGroupedMessage(item) {
     if (item.type === 'tool-group') {
-        // Render tool call and result together
         const toolCall = item.toolCall;
         const toolResult = item.toolResult;
 
@@ -416,7 +242,6 @@ function renderGroupedMessage(item) {
             </div>
         `;
     } else {
-        // Regular single message
         return renderMessage(item.message);
     }
 }
@@ -439,7 +264,6 @@ function renderMessage(msg) {
 
 function getRoleClass(msg) {
     if (msg.role === 'user') {
-        // Check if it's a tool result
         const content = msg.content || '';
         if (content.includes('[Tool Result:') || content.includes('[Tool Result]')) {
             return 'tool-result';
@@ -458,7 +282,6 @@ function getRoleClass(msg) {
 function getRoleName(msg) {
     const content = msg.content || '';
 
-    // Check for tool result first (can be in user messages)
     if (content.includes('[Tool Result:') || content.includes('[Tool Result]')) {
         return '工具结果';
     }
@@ -482,41 +305,32 @@ function getRoleName(msg) {
 function formatContent(content, type) {
     if (!content) return '';
 
-    // 1. Tool result - show as terminal output
+    // Tool result
     if (content.includes('[Tool Result:')) {
         const resultMatch = content.match(/\[Tool Result:[^\]]*\]\s*(.*)/s);
         if (resultMatch && resultMatch[1]) {
             const resultContent = resultMatch[1].trim();
-
-            // Check if it's a diff
             if (isDiffContent(resultContent)) {
                 return renderDiff(resultContent);
             }
-
             return `<pre class="terminal-output">${escapeHtml(resultContent)}</pre>`;
         }
         return `<pre class="terminal-output">${escapeHtml(content)}</pre>`;
     }
 
-    // 2. Tool call - show as terminal command
+    // Tool call
     if (content.includes('[Tool Call:') || content.includes('[Tool:')) {
         return `<pre class="terminal-command">${escapeHtml(content)}</pre>`;
     }
 
-    // 3. Plain text - convert newlines for display
+    // Plain text
     return escapeHtml(content).replace(/\n/g, '<br>');
 }
 
 function isDiffContent(content) {
-    // Check if content has diff-like patterns
-    // Pattern 1: Standard unified diff headers
     const hasDiffHeader = /^@@ |^diff --git|^---|^^\+\+\+/m.test(content);
-
-    // Pattern 2: Lines starting with + or - (and both exist)
     const hasPlusMinus = /^[\+\-]/m.test(content);
     const hasBothPlusMinus = content.includes('+') && content.includes('-');
-
-    // Pattern 3: "Skipped:" or similar git status output
     const hasGitStatus = /^(\+|-|\s)\s+\d+\.\s+(Skipped|Created|Modified|Deleted):/m.test(content);
 
     return hasDiffHeader || (hasPlusMinus && hasBothPlusMinus) || hasGitStatus;
@@ -531,7 +345,6 @@ function renderDiff(content) {
             highlight: false
         });
     } catch (e) {
-        // Fallback to terminal style if diff2html fails
         return `<pre class="terminal-output">${escapeHtml(content)}</pre>`;
     }
 }
@@ -542,63 +355,148 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    loadSessions(true);
+function performSearch(searchTerm) {
+    currentSearchTerm = searchTerm;
 
-    // Apply filters button
-    document.getElementById('applyFilters').addEventListener('click', () => loadSessions(true));
-
-    // Enter key in search
-    document.getElementById('searchInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            const detailPanel = document.getElementById('sessionDetail');
-            if (detailPanel.style.display === 'flex' && window.currentMessages) {
-                // 在详情页，搜索消息内容
-                const searchTerm = document.getElementById('searchInput').value;
-                renderMessages(window.currentMessages, searchTerm);
-            } else {
-                // 在列表页，搜索会话
-                loadSessions(true);
-            }
-        }
-    });
-
-    // 实时搜索（输入时）
-    document.getElementById('searchInput').addEventListener('input', () => {
-        const detailPanel = document.getElementById('sessionDetail');
-        if (detailPanel.style.display === 'flex' && window.currentMessages) {
-            // 在详情页，实时搜索消息内容
-            const searchTerm = document.getElementById('searchInput').value;
-            renderMessages(window.currentMessages, searchTerm);
-        }
-    });
-
-    // 关闭搜索面板按钮
-    document.getElementById('searchCloseBtn').addEventListener('click', () => {
-        document.getElementById('searchResultsPanel').style.display = 'none';
-        document.getElementById('searchInput').value = '';
-        currentSearchTerm = '';
+    if (!searchTerm || !currentMessages) {
         searchResults = [];
+        document.getElementById('searchResultsPanel').style.display = 'none';
         clearHighlights();
+        return;
+    }
+
+    // Filter messages first (same as renderMessages)
+    let filteredMessages = currentMessages.filter(msg => {
+        const content = msg.content || '';
+        if (msg.role === 'assistant' && !content.trim()) {
+            return false;
+        }
+        return true;
     });
 
-    // 过滤工具调用开关
-    document.getElementById('filterToolCalls').addEventListener('change', (e) => {
-        filterToolCalls = e.target.checked;
-        // 清空容器，强制重新渲染
-        document.getElementById('messages').innerHTML = '';
-        // 重新渲染消息
-        const detailPanel = document.getElementById('sessionDetail');
-        if (detailPanel.style.display === 'flex' && window.currentMessages) {
-            const searchTerm = document.getElementById('searchInput').value;
-            renderMessages(window.currentMessages, searchTerm);
+    if (filterToolCalls) {
+        filteredMessages = filteredMessages.filter(msg => {
+            const content = msg.content || '';
+            const isToolCall = content.includes('[Tool Call:') || content.includes('[Tool:');
+            const isToolResult = content.includes('[Tool Result:') || content.includes('[Tool Result]');
+            return !(isToolCall || isToolResult);
+        });
+    }
+
+    searchResults = searchInMessages(filteredMessages, searchTerm);
+    showSearchResults();
+}
+
+function searchInMessages(messages, term) {
+    if (!term) return [];
+
+    const results = [];
+    const lowerTerm = term.toLowerCase();
+
+    messages.forEach((msg, index) => {
+        const content = msg.content || '';
+        if (content.toLowerCase().includes(lowerTerm)) {
+            const idx = content.toLowerCase().indexOf(lowerTerm);
+            const start = Math.max(0, idx - 30);
+            const end = Math.min(content.length, idx + term.length + 30);
+            let preview = content.substring(start, end);
+            if (start > 0) preview = '...' + preview;
+            if (end < content.length) preview = preview + '...';
+
+            results.push({
+                messageIndex: index,
+                preview: preview,
+                position: idx
+            });
         }
     });
 
-    // Load more button
-    document.getElementById('loadMoreBtn').addEventListener('click', () => {
-        currentOffset += PAGE_SIZE;
-        loadSessions(false);
+    return results;
+}
+
+function showSearchResults() {
+    const panel = document.getElementById('searchResultsPanel');
+    const countEl = document.getElementById('searchResultsCount');
+    const listEl = document.getElementById('searchResultsList');
+
+    if (!currentSearchTerm || searchResults.length === 0) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    countEl.textContent = `找到 ${searchResults.length} 条匹配`;
+
+    const items = searchResults.map((result, idx) => {
+        const escaped = currentSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escaped})`, 'gi');
+        const highlighted = result.preview.replace(regex, '<mark>$1</mark>');
+
+        return `
+            <div class="search-result-item" data-index="${idx}">
+                <span class="search-item-index">${idx + 1}</span>
+                <span class="search-item-preview">${highlighted}</span>
+            </div>
+        `;
+    }).join('');
+
+    listEl.innerHTML = items;
+    panel.style.display = 'block';
+
+    listEl.querySelectorAll('.search-result-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const idx = parseInt(item.dataset.index);
+            goToMatch(idx);
+        });
     });
-});
+}
+
+function goToMatch(idx) {
+    currentSearchIndex = idx;
+    const container = document.getElementById('messages');
+
+    container.querySelectorAll('.message-highlight').forEach(el => {
+        el.classList.remove('message-highlight');
+    });
+
+    clearHighlights();
+
+    const result = searchResults[idx];
+    if (!result) return;
+
+    const messageElements = container.querySelectorAll('.message, .tool-group');
+    const targetElement = messageElements[result.messageIndex];
+
+    if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetElement.classList.add('message-highlight');
+
+        const contentEl = targetElement.querySelector('.message-content');
+        if (contentEl) {
+            const escaped = currentSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(${escaped})`, 'gi');
+            contentEl.innerHTML = contentEl.innerHTML.replace(regex, '<mark class="search-highlight current">$1</mark>');
+
+            setTimeout(() => {
+                contentEl.querySelectorAll('.search-highlight').forEach(el => {
+                    el.classList.remove('current');
+                });
+            }, 1500);
+        }
+
+        setTimeout(() => {
+            targetElement.classList.remove('message-highlight');
+        }, 2000);
+    }
+
+    const listEl = document.getElementById('searchResultsList');
+    listEl.querySelectorAll('.search-result-item').forEach((item, i) => {
+        item.classList.toggle('active', i === idx);
+    });
+}
+
+function clearHighlights() {
+    const container = document.getElementById('messages');
+    container.querySelectorAll('.search-highlight').forEach(el => {
+        el.replaceWith(el.textContent);
+    });
+}
