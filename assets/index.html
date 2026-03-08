@@ -8,6 +8,8 @@
     <!-- Diff2html for diff display -->
     <script src="https://cdn.jsdelivr.net/npm/diff2html/bundles/diff2html.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/diff2html.min.css">
+    <!-- html2canvas for image sharing -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 </head>
 <body>
     <div class="app">
@@ -58,6 +60,14 @@
                         <input type="checkbox" id="filterToolCalls" checked>
                         <span>隐藏工具调用</span>
                     </label>
+                    <button class="btn-share" id="shareBtn" title="分享为图片">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                            <polyline points="16 6 12 2 8 6"></polyline>
+                            <line x1="12" y1="2" x2="12" y2="15"></line>
+                        </svg>
+                        <span>分享</span>
+                    </button>
                 </div>
 
                 <div class="messages" id="messages">
@@ -65,6 +75,32 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Share Modal -->
+    <div class="modal-overlay" id="shareModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3>预览分享图片</h3>
+                <button class="modal-close" id="closeShareModal">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="share-preview" id="sharePreview">
+                    <div class="loading">生成图片中...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal btn-cancel" id="cancelShare">取消</button>
+                <button class="btn-modal btn-download" id="downloadShare">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    下载图片
+                </button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

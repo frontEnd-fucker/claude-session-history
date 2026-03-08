@@ -7,6 +7,7 @@ let filterToolCalls = localStorage.getItem('filterToolCalls') !== 'false';
 let currentSearchTerm = '';
 let searchResults = [];
 let currentSearchIndex = -1;
+let shareImageDataUrl = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -44,6 +45,17 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSearchTerm = '';
         searchResults = [];
         clearHighlights();
+    });
+
+    // Share button handlers
+    document.getElementById('shareBtn').addEventListener('click', handleShare);
+    document.getElementById('closeShareModal').addEventListener('click', closeShareModal);
+    document.getElementById('cancelShare').addEventListener('click', closeShareModal);
+    document.getElementById('downloadShare').addEventListener('click', downloadImage);
+    document.getElementById('shareModal').addEventListener('click', (e) => {
+        if (e.target.id === 'shareModal') {
+            closeShareModal();
+        }
     });
 });
 
@@ -532,4 +544,178 @@ function clearHighlights() {
     container.querySelectorAll('.search-highlight').forEach(el => {
         el.replaceWith(el.textContent);
     });
+}
+
+// Share functionality
+async function handleShare() {
+    const previewContainer = document.getElementById('sharePreview');
+
+    // Show modal with loading state
+    document.getElementById('shareModal').classList.add('active');
+    previewContainer.innerHTML = '<div class="loading">生成图片中...</div>';
+    shareImageDataUrl = null;
+
+    try {
+        // Get current messages container
+        const messagesContainer = document.getElementById('messages');
+
+        // Get only visible messages (limit to last 100 for performance)
+        const allMessages = messagesContainer.querySelectorAll('.message, .tool-group');
+        const maxMessages = 100;
+        const visibleMessages = Array.from(allMessages).slice(-maxMessages);
+
+        if (visibleMessages.length === 0) {
+            previewContainer.innerHTML = '<div class="no-results">没有消息可分享</div>';
+            return;
+        }
+
+        // Create a wrapper element for rendering
+        const wrapper = document.createElement('div');
+        wrapper.id = 'share-render-wrapper';
+        wrapper.style.cssText = `
+            position: fixed;
+            left: -9999px;
+            top: 0;
+            width: 800px;
+            background: #ffffff;
+            font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 24px;
+            color: #1a1a1a;
+        `;
+
+        // Add title
+        const projectTitle = document.getElementById('projectTitle').textContent;
+        const titleEl = document.createElement('h2');
+        titleEl.style.cssText = 'font-size: 18px; font-weight: 600; margin-bottom: 8px; color: #1a1a1a;';
+        titleEl.textContent = projectTitle;
+        wrapper.appendChild(titleEl);
+
+        // Add date
+        const dateEl = document.createElement('div');
+        dateEl.style.cssText = 'font-size: 12px; color: #6b7280; margin-bottom: 16px;';
+        dateEl.textContent = new Date().toLocaleDateString('zh-CN', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        wrapper.appendChild(dateEl);
+
+        // Create messages container
+        const messagesWrapper = document.createElement('div');
+        messagesWrapper.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
+
+        // Clone only visible messages
+        visibleMessages.forEach(msg => {
+            const cloned = msg.cloneNode(true);
+            // Reset inline styles
+            cloned.style.cssText = '';
+
+            // Apply styles based on message type
+            const isUser = cloned.classList.contains('user');
+            const isAssistant = cloned.classList.contains('assistant');
+            const isToolCall = cloned.classList.contains('tool-call');
+            const isToolResult = cloned.classList.contains('tool-result');
+            const isToolGroup = cloned.classList.contains('tool-group');
+
+            if (isUser) {
+                cloned.style.cssText = 'max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; align-self: flex-end; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-bottom-right-radius: 4px;';
+            } else if (isAssistant) {
+                cloned.style.cssText = 'max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; align-self: flex-start; background: #f9fafb; border: 1px solid #e5e7eb; border-bottom-left-radius: 4px;';
+            } else if (isToolGroup) {
+                cloned.style.cssText = 'display: flex; flex-direction: column; margin-bottom: 8px; padding: 12px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;';
+            } else if (isToolCall) {
+                cloned.style.cssText = 'max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; align-self: stretch; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 8px;';
+            } else if (isToolResult) {
+                cloned.style.cssText = 'max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; align-self: stretch; background: #fef3c7; border-left: 3px solid #2563eb; border-radius: 8px;';
+            }
+
+            // Style header and content
+            const header = cloned.querySelector('.message-header');
+            if (header) {
+                header.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; font-weight: 600;';
+            }
+
+            const role = cloned.querySelector('.message-role');
+            if (role) {
+                if (isUser) {
+                    role.style.cssText = 'padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: rgba(255,255,255,0.2); color: white;';
+                } else {
+                    role.style.cssText = 'padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #eff6ff; color: #2563eb;';
+                }
+            }
+
+            const content = cloned.querySelector('.message-content');
+            if (content) {
+                content.style.cssText = 'white-space: pre-wrap; line-height: 1.6;';
+                if (isUser) {
+                    content.style.color = 'white';
+                }
+            }
+
+            // Style code blocks
+            cloned.querySelectorAll('pre').forEach(pre => {
+                pre.style.cssText = 'font-family: "SF Mono", "Fira Code", Monaco, monospace; font-size: 12px; line-height: 1.5; background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; margin-top: 8px;';
+            });
+
+            messagesWrapper.appendChild(cloned);
+        });
+
+        wrapper.appendChild(messagesWrapper);
+        document.body.appendChild(wrapper);
+
+        // Render to canvas with timeout
+        const canvas = await Promise.race([
+            html2canvas(wrapper, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                windowWidth: 800,
+                width: 800,
+                onclone: (clonedDoc) => {
+                    // Ensure the cloned element is visible
+                    const el = clonedDoc.getElementById('share-render-wrapper');
+                    if (el) {
+                        el.style.display = 'block';
+                    }
+                }
+            }),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Timeout')), 30000)
+            )
+        ]);
+
+        // Clean up wrapper
+        document.body.removeChild(wrapper);
+
+        // Convert to data URL
+        shareImageDataUrl = canvas.toDataURL('image/png');
+
+        // Show preview
+        previewContainer.innerHTML = `<img src="${shareImageDataUrl}" alt="分享预览">`;
+
+    } catch (error) {
+        console.error('Failed to generate image:', error);
+        previewContainer.innerHTML = '<div class="no-results">生成图片失败: ' + error.message + '</div>';
+    }
+}
+
+function downloadImage() {
+    if (!shareImageDataUrl) {
+        return;
+    }
+
+    const link = document.createElement('a');
+    link.href = shareImageDataUrl;
+    link.download = `会话消息_${new Date().toISOString().slice(0, 10)}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function closeShareModal() {
+    document.getElementById('shareModal').classList.remove('active');
+    shareImageDataUrl = null;
 }
