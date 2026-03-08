@@ -3,18 +3,22 @@ const API_BASE = '';
 // State
 let currentProjectId = null;
 let currentMessages = null;
-let filterToolCalls = true;
+let filterToolCalls = localStorage.getItem('filterToolCalls') !== 'false';
 let currentSearchTerm = '';
 let searchResults = [];
 let currentSearchIndex = -1;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    // Set initial checkbox state from localStorage
+    document.getElementById('filterToolCalls').checked = filterToolCalls;
+
     loadCurrentProject();
 
     // Filter tool calls toggle
     document.getElementById('filterToolCalls').addEventListener('change', (e) => {
         filterToolCalls = e.target.checked;
+        localStorage.setItem('filterToolCalls', filterToolCalls);
         if (currentMessages) {
             renderMessages(currentMessages);
         }
